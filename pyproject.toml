@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adspower-automation"
+version = "1.0.0"
+description = "AdsPower Automation Framework"
+authors = [
+    {name = "AdsPower Automation Team"}
+]
+dependencies = [
+    "selenium>=4.15.0",
+    "pyautogui>=0.9.54",
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "pydantic>=2.4.0",
+    "numpy>=1.24.0"
+]
+
+[tool.setuptools]
+packages = {find = {}}

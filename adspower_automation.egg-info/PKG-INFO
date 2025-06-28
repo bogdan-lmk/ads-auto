@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: adspower-automation
+Version: 1.0.0
+Summary: AdsPower Automation Framework
+Author: AdsPower Automation Team
+Requires-Dist: selenium>=4.15.0
+Requires-Dist: pyautogui>=0.9.54
+Requires-Dist: opencv-python>=4.8.0
+Requires-Dist: Pillow>=10.0.0
+Requires-Dist: pydantic>=2.4.0
+Requires-Dist: numpy>=1.24.0
