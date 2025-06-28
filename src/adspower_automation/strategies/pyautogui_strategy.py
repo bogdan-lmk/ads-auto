@@ -458,6 +458,34 @@ class PyAutoGUIStrategy(AdsPowerAutomation):
             self.logger.error(f"Exception while activating AdsPower window: {str(e)}")
             return False
 
+    async def click_open_button(self) -> bool:
+        """Найти и нажать кнопку 'Открыть' для выделенного профиля"""
+        try:
+            self.logger.info("Поиск и нажатие кнопки 'Открыть'...")
+            
+            # Сначала попробуем упрощенный метод
+            if await self.click_open_button_simple():
+                return True
+            
+            # Если не сработал, попробуем другие методы
+            self.logger.info("Упрощенный метод не сработал, пробуем другие...")
+            
+            # Попробовать поиск по позиции (исправленный)
+            button_pos = await self._find_open_button_by_position()
+            if button_pos:
+                return await self._click_button(button_pos, "position-based")
+            
+            # Попробовать поиск по цвету
+            button_pos = await self._find_open_button_by_color()
+            if button_pos:
+                return await self._click_button(button_pos, "color detection")
+            
+            self.logger.warning("Кнопка 'Открыть' не найдена всеми методами")
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при поиске кнопки 'Открыть': {str(e)}")
+            return False
     
     # Web Automation Methods (Not applicable for desktop app)
     async def navigate_to_url(self, url: str) -> bool:
@@ -520,29 +548,328 @@ class PyAutoGUIStrategy(AdsPowerAutomation):
             self.logger.error(error_msg)
             return ProfileResponse.error_response(error_msg)
     
+    async def _find_open_button_by_position(self) -> Optional[Tuple[int, int]]:
+        """Поиск кнопки в предполагаемых позициях на основе скриншота"""
+        try:
+            # Исправленные координаты на основе ваших скриншотов
+            # Размер экрана: 1440x900
+            height, width = pyautogui.size()
+            
+            # Точные позиции кнопок "Открыть" (на основе ваших скриншотов)
+            potential_positions = [
+                (int(width * 0.853), int(height * 0.427)),  
+            ]
+            
+            self.logger.info(f"Проверка позиций кнопок для экрана {width}x{height}")
+            
+            screenshot = pyautogui.screenshot()
+            screenshot_np = np.array(screenshot)
+            screenshot_cv = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
+            
+            for i, (x, y) in enumerate(potential_positions):
+                self.logger.info(f"Проверка позиции {i+1}: ({x}, {y})")
+                
+                # Проверить область вокруг каждой позиции (увеличенная область)
+                region_size = 50
+                x1, y1 = max(0, x - region_size), max(0, y - region_size)
+                x2, y2 = min(width, x + region_size), min(height, y + region_size)
+                
+                region = screenshot_cv[y1:y2, x1:x2]
+                
+                if region.size == 0:
+                    continue
+                
+                # Проверить наличие синего цвета в этой области
+                hsv_region = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+                
+                # Более точный диапазон для кнопок AdsPower
+                lower_blue = np.array([105, 100, 100])
+                upper_blue = np.array([125, 255, 255])
+                mask = cv2.inRange(hsv_region, lower_blue, upper_blue)
+                
+                # Если в области достаточно синих пикселей, это может быть кнопка
+                blue_pixels = cv2.countNonZero(mask)
+                total_pixels = region.shape[0] * region.shape[1]
+                blue_percentage = blue_pixels / total_pixels if total_pixels > 0 else 0
+                
+                self.logger.info(f"Позиция ({x}, {y}): синих пикселей {blue_percentage:.2%}")
+                
+                if blue_percentage > 0.2:  # 20% синих пикселей
+                    self.logger.info(f"Найдена кнопка по позиции в ({x}, {y})")
+                    return (x, y)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка в поиске по позиции: {str(e)}")
+            return None
+
+    async def _find_open_button_by_color(self) -> Optional[Tuple[int, int]]:
+        """Поиск синих кнопок в интерфейсе"""
+        try:
+            screenshot = pyautogui.screenshot()
+            screenshot_np = np.array(screenshot)
+            screenshot_cv = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
+            
+            # Конвертировать в HSV
+            hsv = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2HSV)
+            
+            # Диапазон синего цвета (более широкий)
+            lower_blue = np.array([90, 80, 80])
+            upper_blue = np.array([140, 255, 255])
+            
+            mask = cv2.inRange(hsv, lower_blue, upper_blue)
+            
+            # Морфологические операции
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            height, width = screenshot_cv.shape[:2]
+            candidates = []
+            
+            for contour in contours:
+                x, y, w, h = cv2.boundingRect(contour)
+                area = cv2.contourArea(contour)
+                
+                # Фильтры для кнопки
+                if (500 < area < 5000 and 
+                    40 < w < 150 and 
+                    20 < h < 60 and
+                    x > width * 0.7):  # Правая часть экрана
+                    
+                    aspect_ratio = w / h
+                    if 1.5 < aspect_ratio < 4:
+                        candidates.append({
+                            'x': x + w // 2,
+                            'y': y + h // 2,
+                            'area': area,
+                            'distance_from_right': width - x
+                        })
+            
+            if candidates:
+                # Выбрать кнопку ближе к правому краю
+                best = min(candidates, key=lambda c: c['distance_from_right'])
+                self.logger.info(f"Найдена кнопка по цвету в позиции ({best['x']}, {best['y']})")
+                return (best['x'], best['y'])
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка в поиске по цвету: {str(e)}")
+            return None
+
+    async def _find_open_button_by_position(self) -> Optional[Tuple[int, int]]:
+        """Поиск кнопки в предполагаемых позициях на основе скриншота"""
+        try:
+            # На основе ваших скриншотов, кнопки "Открыть" находятся примерно в этих позициях
+            height, width = pyautogui.size()
+            
+            # Предполагаемые позиции кнопок (относительно размера экрана)
+            potential_positions = [
+                (int(width * 0.85), int(height * 0.39)),  # Первая кнопка
+                (int(width * 0.85), int(height * 0.47)),  # Вторая кнопка
+                (int(width * 0.85), int(height * 0.55)),  # Возможная третья
+            ]
+            
+            screenshot = pyautogui.screenshot()
+            screenshot_np = np.array(screenshot)
+            screenshot_cv = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
+            
+            for x, y in potential_positions:
+                # Проверить область вокруг каждой позиции
+                region_size = 40
+                x1, y1 = max(0, x - region_size), max(0, y - region_size)
+                x2, y2 = min(width, x + region_size), min(height, y + region_size)
+                
+                region = screenshot_cv[y1:y2, x1:x2]
+                
+                if region.size == 0:
+                    continue
+                
+                # Проверить наличие синего цвета в этой области
+                hsv_region = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+                lower_blue = np.array([100, 100, 100])
+                upper_blue = np.array([130, 255, 255])
+                mask = cv2.inRange(hsv_region, lower_blue, upper_blue)
+                
+                # Если в области достаточно синих пикселей, это может быть кнопка
+                blue_pixels = cv2.countNonZero(mask)
+                total_pixels = region.shape[0] * region.shape[1]
+                
+                if blue_pixels > total_pixels * 0.3:  # 30% синих пикселей
+                    self.logger.info(f"Найдена кнопка по позиции в ({x}, {y})")
+                    return (x, y)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка в поиске по позиции: {str(e)}")
+            return None
+
+    async def _click_button(self, position: Tuple[int, int], method: str) -> bool:
+        """Кликнуть по найденной кнопке"""
+        try:
+            x, y = position
+            self.logger.info(f"Клик по кнопке 'Открыть' ({method}) в позиции ({x}, {y})")
+            
+            # Переместить мышь и кликнуть
+            pyautogui.moveTo(x, y, duration=0.5)
+            await asyncio.sleep(0.3)
+            pyautogui.click(x, y)
+            
+            # Сделать скриншот после клика
+            await asyncio.sleep(1)
+            screenshot_after = pyautogui.screenshot()
+            screenshots_dir = Path(self.config.screenshots_path)
+            after_path = screenshots_dir / f"after_click_{method}.png"
+            screenshot_after.save(str(after_path))
+            self.logger.info(f"Скриншот после клика сохранен: {after_path}")
+            
+            self.logger.info("Кнопка 'Открыть' нажата успешно")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при клике: {str(e)}")
+            return False
+        
+    async def click_open_button_simple(self) -> bool:
+        """Упрощенный метод - прямой клик по кнопке на основе ID профиля"""
+        try:
+            self.logger.info("Простой поиск кнопки 'Открыть'...")
+            
+            # Размер экрана
+            height, width = pyautogui.size()
+            
+            # Прямые координаты кнопок "Открыть" (на основе ваших скриншотов)
+            button_positions = [
+                (int(width * 0.853), int(height * 0.427)),  # Первая кнопка "Открыть"
+                (int(width * 0.853), int(height * 0.487)),  # Вторая кнопка "Открыть"
+            ]
+            
+            # Попробовать кликнуть по каждой кнопке и проверить результат
+            for i, (x, y) in enumerate(button_positions):
+                self.logger.info(f"Пробуем кнопку {i+1} в позиции ({x}, {y})")
+                
+                # Сделать скриншот до клика
+                screenshot_before = pyautogui.screenshot()
+                
+                # Кликнуть
+                pyautogui.moveTo(x, y, duration=0.5)
+                await asyncio.sleep(0.3)
+                pyautogui.click(x, y)
+                await asyncio.sleep(2)  # Подождать реакции
+                
+                # Сделать скриншот после клика
+                screenshot_after = pyautogui.screenshot()
+                
+                # Сравнить скриншоты - если что-то изменилось, значит клик сработал
+                before_np = np.array(screenshot_before)
+                after_np = np.array(screenshot_after)
+                
+                # Простое сравнение по разности
+                diff = np.sum(np.abs(before_np.astype(int) - after_np.astype(int)))
+                
+                self.logger.info(f"Разность скриншотов: {diff}")
+                
+                if diff > 1000000:  # Если есть существенные изменения
+                    self.logger.info(f"✅ Кнопка {i+1} сработала! Профиль открывается.")
+                    
+                    # Сохранить результат
+                    screenshots_dir = Path(self.config.screenshots_path)
+                    screenshots_dir.mkdir(parents=True, exist_ok=True)
+                    after_path = screenshots_dir / f"success_click_button_{i+1}.png"
+                    screenshot_after.save(str(after_path))
+                    self.logger.info(f"Скриншот успеха сохранен: {after_path}")
+                    
+                    return True
+            
+            self.logger.warning("Ни одна кнопка не сработала")
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка в простом методе: {str(e)}")
+            return False
+
+    async def select_profile_by_id(self, profile_id: str) -> bool:
+        """Выделить профиль по ID перед открытием"""
+        try:
+            self.logger.info(f"Поиск и выделение профиля: {profile_id}")
+            
+            # Исправленные координаты для выделения профилей
+            height, width = pyautogui.size()
+            
+            # Позиции строк профилей (левая часть таблицы)
+            profile_positions = [
+                (int(width * 0.5), int(height * 0.427)),  # ≈ (720, 384) - первый профиль
+                (int(width * 0.5), int(height * 0.487)),  # ≈ (720, 438) - второй профиль
+                (int(width * 0.5), int(height * 0.547)),  # ≈ (720, 492) - третий профиль
+            ]
+            
+            # Попробовать кликнуть по профилю с нужным ID
+            try:
+                profile_index = int(profile_id) - 1  # Конвертировать в индекс (1->0, 2->1)
+                if 0 <= profile_index < len(profile_positions):
+                    click_x, click_y = profile_positions[profile_index]
+                    
+                    self.logger.info(f"Клик по профилю {profile_id} в позиции ({click_x}, {click_y})")
+                    pyautogui.click(click_x, click_y)
+                    await asyncio.sleep(1)  # Подождать выделения
+                    
+                    return True
+                else:
+                    self.logger.warning(f"Профиль с ID {profile_id} не найден в списке")
+            except ValueError:
+                self.logger.warning(f"Неверный ID профиля: {profile_id}")
+            
+            # Если не удалось найти по индексу, кликаем по первому профилю
+            if profile_positions:
+                click_x, click_y = profile_positions[0]
+                self.logger.info(f"Клик по первому профилю в позиции ({click_x}, {click_y})")
+                pyautogui.click(click_x, click_y)
+                await asyncio.sleep(1)
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при выделении профиля: {str(e)}")
+            return False
+        
     async def open_profile(self, profile_id: str) -> ProfileResponse:
-        """Open an existing profile"""
+        """Open an existing profile by selecting it and clicking Open button"""
         try:
             self.logger.info(f"Opening profile: {profile_id}")
             
-            # Activate AdsPower window
+            # Активировать AdsPower window
             if not await self.activate_adspower_window():
                 return ProfileResponse.error_response("Could not activate AdsPower window")
             
-            # Find the profile in the list and click open button
-            open_button = await self.find_element("open_profile_button", ElementLocatorType.IMAGE, timeout=10)
-            if not open_button:
-                return ProfileResponse.error_response("Could not find open profile button")
+            # Подождать готовности интерфейса
+            await self.wait(2)
             
-            await self.click(open_button)
-            await self.wait(5)  # Wait for profile to open
+            # Сначала выделить нужный профиль
+            self.logger.info("Выделение профиля...")
+            if not await self.select_profile_by_id(profile_id):
+                self.logger.warning("Не удалось выделить профиль, пробуем открыть без выделения")
             
-            self.logger.info(f"Profile '{profile_id}' opened successfully")
-            return ProfileResponse.success_response(
-                profile_id=profile_id,
-                message=f"Profile '{profile_id}' opened successfully"
-            )
+            # Подождать немного после выделения
+            await self.wait(1)
             
+            # Теперь нажать кнопку "Открыть"
+            if await self.click_open_button():
+                # Подождать открытия профиля
+                await self.wait(3)
+                
+                self.logger.info(f"Profile '{profile_id}' opened successfully")
+                return ProfileResponse.success_response(
+                    profile_id=profile_id,
+                    message=f"Profile '{profile_id}' opened successfully"
+                )
+            else:
+                return ProfileResponse.error_response("Could not find or click Open button")
+                
         except Exception as e:
             error_msg = f"Failed to open profile: {str(e)}"
             self.logger.error(error_msg)
