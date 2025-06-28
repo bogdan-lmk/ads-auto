@@ -1,0 +1,12 @@
+{"timestamp": "2025-06-28T12:28:57.694180", "level": "INFO", "logger": "AdsPowerApp", "message": "Initializing AdsPower Automation Application", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:29:11.459872", "level": "INFO", "logger": "AdsPowerApp", "message": "Application initialized successfully", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:30:06.559277", "level": "INFO", "logger": "AdsPowerApp", "message": "Shutting down application", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:30:06.560718", "level": "INFO", "logger": "AdsPowerApp", "message": "Application shutdown completed", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:42:23.610521", "level": "INFO", "logger": "AdsPowerApp", "message": "Initializing AdsPower Automation Application", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:42:24.787841", "level": "INFO", "logger": "AdsPowerApp", "message": "Application initialized successfully", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:42:43.637251", "level": "INFO", "logger": "AdsPowerApp", "message": "Shutting down application", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:42:43.638495", "level": "INFO", "logger": "AdsPowerApp", "message": "Application shutdown completed", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:48:05.244592", "level": "INFO", "logger": "AdsPowerApp", "message": "Initializing AdsPower Automation Application", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:48:06.368944", "level": "INFO", "logger": "AdsPowerApp", "message": "Application initialized successfully", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:48:25.838913", "level": "INFO", "logger": "AdsPowerApp", "message": "Shutting down application", "module": "logger", "function": "info", "line": 129}
+{"timestamp": "2025-06-28T12:48:25.841577", "level": "INFO", "logger": "AdsPowerApp", "message": "Application shutdown completed", "module": "logger", "function": "info", "line": 129}
